@@ -75,26 +75,28 @@ class BaseProcessor(ABC):
             curr_o+=span[-1]-span[0]+1
         return spans
 
-    def tokenize_input_output(self, prompt, output):
+    def tokenize_input_output(self, prompt, output=None):
         tokenized_prompt = self.tokenize_input(prompt)
-        tokenized_output = self.tokenize_input(output)
+        if output is not None:
+          tokenized_output = self.tokenize_input(output)
+        else:
+          tokenized_output = None
         return tokenized_prompt,tokenized_output 
     
-    def process_example(self, prompt, output):
+    def process_example(self, prompt, output=None):
         tokenized_prompt, tokenized_output = self.tokenize_input_output(prompt, output)
         
         spans_idx = [(i, i + j) for i in range(len(tokenized_prompt)) for j in range(self.max_width)]
 
-        output_spans = self.construct_spans(tokenized_prompt, tokenized_output)
+        model_inputs = self.prepare_model_inputs(tokenized_prompt, tokenized_output)
 
-        model_inputs = self.prepare_model_inputs(tokenized_prompt, tokenized_output, output_spans)
-        
-        labels = self.construct_labels(output_spans)
+        if output is not None:
+          output_spans = self.construct_spans(tokenized_prompt, tokenized_output)
+          labels = self.construct_labels(output_spans)
+          model_inputs['labels'] = torch.tensor(labels).unsqueeze(0)
 
         model_inputs['span_idx'] = torch.tensor(spans_idx, dtype=torch.int64).unsqueeze(0)
 
-        model_inputs['labels'] = torch.tensor(labels).unsqueeze(0)
-        
         model_inputs['text_length'] = torch.tensor([len(tokenized_prompt)]).unsqueeze(0)
         return model_inputs
 
@@ -113,11 +115,6 @@ class TokenLevelEncoderDecoderProcessor(BaseProcessor):
             tokens = self.tokenizer.encode(text, **self.tokenization_args)
         return tokens
     
-    def tokenize_input_output(self, prompt, output):
-        tokenized_prompt = self.tokenize_input(prompt)
-        tokenized_output = self.tokenize_output(output)
-        return tokenized_prompt,tokenized_output 
-    
     def construct_labels(self, spans):
         labels = []
         for span in spans:
@@ -130,14 +127,15 @@ class TokenLevelEncoderDecoderProcessor(BaseProcessor):
                 labels.append(-100)
         return labels
 
-    def prepare_model_inputs(self, tokenized_prompt, tokenized_output, spans):
+    def prepare_model_inputs(self, tokenized_prompt, tokenized_output):
         decoder_input_ids = [self.decoder_start_token_id]
-        decoder_input_ids.extend(tokenized_output[:-1])
+        if tokenized_output is not None:
+          decoder_input_ids.extend(tokenized_output[:-1])
 
         model_inputs = {"input_ids": torch.tensor(tokenized_prompt).unsqueeze(0),
                         "decoder_input_ids": torch.tensor(decoder_input_ids).unsqueeze(0)}
         attention_mask = self.init_attention_mask(len(tokenized_prompt))
-        decoder_attention_mask = self.init_attention_mask(len(tokenized_output))
+        decoder_attention_mask = self.init_attention_mask(len(decoder_input_ids))
 
         model_inputs['attention_mask'] = attention_mask
         model_inputs['decoder_attention_mask'] = decoder_attention_mask
