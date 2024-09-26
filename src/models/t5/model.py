@@ -13,7 +13,8 @@ from transformers.modeling_outputs import (
 )
 from transformers.utils.model_parallel_utils import assert_device_map, get_device_map
 from transformers.utils import logging
-from transformers.models.t5.modeling_t5 import T5Stack, T5PreTrainedModel, __HEAD_MASK_WARNING_MSG
+from transformers.models.t5.modeling_t5 import (T5Stack, T5PreTrainedModel, T5DenseActDense, T5LayerNorm,
+                                                T5DenseGatedActDense, T5Attention, __HEAD_MASK_WARNING_MSG)
 
 from .config import T5Config
 
@@ -21,6 +22,74 @@ from ...span_modeling import SpanRepLayer, LstmSeq2SeqEncoder
 
 logger = logging.get_logger(__name__)
 
+class T5PreTrainedModel(T5PreTrainedModel):
+    def _init_weights(self, module):
+        """Initialize the weights"""
+        factor = self.config.initializer_factor  # Used for testing weights initialization
+        if isinstance(module, T5LayerNorm):
+            module.weight.data.fill_(factor * 1.0)
+        elif isinstance(
+            module, T5ForConditionalGeneration,
+        ):
+            # Mesh TensorFlow embeddings initialization
+            # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L1624
+            module.shared.weight.data.normal_(mean=0.0, std=factor * 1.0)
+            if hasattr(module, "lm_head") and not self.config.tie_word_embeddings:
+                module.lm_head.weight.data.normal_(mean=0.0, std=factor * 1.0)
+        elif isinstance(module, T5DenseActDense):
+            # Mesh TensorFlow FF initialization
+            # See https://github.com/tensorflow/mesh/blob/master/mesh_tensorflow/transformer/transformer_layers.py#L56
+            # and https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L89
+            module.wi.weight.data.normal_(mean=0.0, std=factor * ((self.config.d_model) ** -0.5))
+            if hasattr(module.wi, "bias") and module.wi.bias is not None:
+                module.wi.bias.data.zero_()
+            module.wo.weight.data.normal_(mean=0.0, std=factor * ((self.config.d_ff) ** -0.5))
+            if hasattr(module.wo, "bias") and module.wo.bias is not None:
+                module.wo.bias.data.zero_()
+        elif isinstance(module, T5DenseGatedActDense):
+            module.wi_0.weight.data.normal_(mean=0.0, std=factor * ((self.config.d_model) ** -0.5))
+            if hasattr(module.wi_0, "bias") and module.wi_0.bias is not None:
+                module.wi_0.bias.data.zero_()
+            module.wi_1.weight.data.normal_(mean=0.0, std=factor * ((self.config.d_model) ** -0.5))
+            if hasattr(module.wi_1, "bias") and module.wi_1.bias is not None:
+                module.wi_1.bias.data.zero_()
+            module.wo.weight.data.normal_(mean=0.0, std=factor * ((self.config.d_ff) ** -0.5))
+            if hasattr(module.wo, "bias") and module.wo.bias is not None:
+                module.wo.bias.data.zero_()
+        elif isinstance(module, T5Attention):
+            # Mesh TensorFlow attention initialization to avoid scaling before softmax
+            # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/attention.py#L136
+            d_model = self.config.d_model
+            key_value_proj_dim = self.config.d_kv
+            n_heads = self.config.num_heads
+            module.q.weight.data.normal_(mean=0.0, std=factor * ((d_model * key_value_proj_dim) ** -0.5))
+            module.k.weight.data.normal_(mean=0.0, std=factor * (d_model**-0.5))
+            module.v.weight.data.normal_(mean=0.0, std=factor * (d_model**-0.5))
+            module.o.weight.data.normal_(mean=0.0, std=factor * ((n_heads * key_value_proj_dim) ** -0.5))
+            if module.has_relative_attention_bias:
+                module.relative_attention_bias.weight.data.normal_(mean=0.0, std=factor * ((d_model) ** -0.5))
+    
+        elif isinstance(module, nn.LSTM):
+            # Initialize LSTM weights and biases
+            for name, param in module.named_parameters():
+                if 'weight_ih' in name:
+                    # Input-hidden weights initialization
+                    nn.init.normal_(param.data, mean=0.0, std=factor * (module.input_size ** -0.5))
+                elif 'weight_hh' in name:
+                    # Hidden-hidden weights initialization
+                    nn.init.orthogonal_(param.data, gain=factor * 1.0)
+                elif 'bias' in name:
+                    # Bias initialization: set biases to zero
+                    param.data.zero_()
+                    # Set forget gate biases to 1 for better training stability
+                    n = param.size(0)
+                    param.data[n // 4:n // 2].fill_(1.0)
+        elif isinstance(module, nn.Linear):
+            # Initialize Linear weights and biases
+            nn.init.normal_(module.weight.data, mean=0.0, std=factor * (module.weight.size(1) ** -0.5))
+            if module.bias is not None:
+                module.bias.data.zero_()
+                
 class T5ForConditionalGeneration(T5PreTrainedModel):
     _keys_to_ignore_on_load_unexpected = [
         "decoder.block.0.layer.1.EncDecAttention.relative_attention_bias.weight",
@@ -203,8 +272,9 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
         
         batch_size, seq_length, hidden_size = hidden_states.shape
 
-        span_mask = (span_idx<text_length.unsqueeze(1))
+        span_mask = (span_idx[:,:,-1]<text_length).unsqueeze(2)
         span_idx = span_mask*span_idx
+
         if self.config.has_rnn:
             post_rnn_hidden_states = self.rnn(hidden_states, attention_mask)
             span_embeddings = self.span_rep(post_rnn_hidden_states, span_idx)
