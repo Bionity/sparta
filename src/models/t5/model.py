@@ -1,6 +1,7 @@
 import copy
 
 import warnings
+from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -21,6 +22,10 @@ from .config import T5Config
 from ...span_modeling import SpanRepLayer, LstmSeq2SeqEncoder
 
 logger = logging.get_logger(__name__)
+
+@dataclass
+class Seq2SeqLMOutput(Seq2SeqLMOutput):
+    span_logits: Optional[torch.FloatTensor] = None
 
 class T5PreTrainedModel(T5PreTrainedModel):
     def _init_weights(self, module):
@@ -340,20 +345,21 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
                                         label_smoothing = label_smoothing,
                                         reduction = reduction)
             # move labels to correct device to enable PP
-            labels = labels.to(lm_logits.device)
+            labels = labels.to(span_logits.device)
             span_loss = loss_fct(span_logits.view(-1, span_logits.size(-1)), labels.view(-1))
             
-            lm_logits = lm_logits[:, :-1,:]
-            token_labels = decoder_input_ids[:,1:]
+            lm_logits = lm_logits[:, :-1,:].contiguous()
+            token_labels = decoder_input_ids[:,1:].contiguous()
             token_loss = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), token_labels.view(-1))
 
         loss = (span_loss, token_loss)
         if not return_dict:
-            output = (lm_logits,) + decoder_outputs[1:] + encoder_outputs
+            output = (span_logits, lm_logits,) + decoder_outputs[1:] + encoder_outputs
             return ((loss,) + output) if loss is not None else output
 
         return Seq2SeqLMOutput(
             loss=loss,
+            spa_logits=span_logits,
             logits=lm_logits,
             past_key_values=decoder_outputs.past_key_values,
             decoder_hidden_states=decoder_outputs.hidden_states,

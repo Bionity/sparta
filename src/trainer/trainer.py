@@ -92,6 +92,7 @@ class Trainer(transformers.Trainer):
         # Forward pass
         outputs = model(label_smoothing = self.args.label_smoothing,
                         reduction = self.args.loss_reduction,
+                        return_dict=True,
                         **inputs)
         loss = outputs.loss[0]*self.args.span_loss_coef+outputs.loss[0]*(1-self.args.span_loss_coef)
         return loss
@@ -198,7 +199,7 @@ class Trainer(transformers.Trainer):
             with self.compute_loss_context_manager():
                 outputs = model(**inputs)
             loss = outputs.loss
-            logits = outputs.logits
+            logits = outputs.span_logits
             labels = inputs['labels']
         if prediction_loss_only:
             return (loss, None, None)
