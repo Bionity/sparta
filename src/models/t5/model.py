@@ -329,19 +329,25 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
             # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
             sequence_output = sequence_output * (self.model_dim**-0.5)
 
-        # lm_logits = self.lm_head(sequence_output)
-        lm_logits = torch.einsum('bld, bkd->blk', sequence_output, span_embeddings)
+        lm_logits = self.lm_head(sequence_output)
 
-        loss = None
+        span_logits = torch.einsum('bld, bkd->blk', sequence_output, span_embeddings)
+
+        span_loss = None
+        token_loss = None
         if labels is not None:
             loss_fct = CrossEntropyLoss(ignore_index=-100, 
                                         label_smoothing = label_smoothing,
                                         reduction = reduction)
             # move labels to correct device to enable PP
             labels = labels.to(lm_logits.device)
-            loss = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), labels.view(-1))
-            # TODO(thom): Add z_loss https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L666
+            span_loss = loss_fct(span_logits.view(-1, span_logits.size(-1)), labels.view(-1))
+            
+            lm_logits = lm_logits[:, :-1,:]
+            token_labels = decoder_input_ids[:,1:]
+            token_loss = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), token_labels.view(-1))
 
+        loss = (span_loss, token_loss)
         if not return_dict:
             output = (lm_logits,) + decoder_outputs[1:] + encoder_outputs
             return ((loss,) + output) if loss is not None else output

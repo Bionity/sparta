@@ -25,7 +25,8 @@ class TrainingArguments(transformers.TrainingArguments):
     others_lr: Optional[float] = None
     others_weight_decay: Optional[float] = 0.0
     label_smoothing: Optional[float] = 0
-    loss_reduction: Optional[str] = 'sum' 
+    loss_reduction: Optional[str] = 'sum'
+    span_loss_coef: Optional[float] = 0.5
 
 class Trainer(transformers.Trainer):
     def training_step(self, model, inputs) -> torch.Tensor:
@@ -92,7 +93,7 @@ class Trainer(transformers.Trainer):
         outputs = model(label_smoothing = self.args.label_smoothing,
                         reduction = self.args.loss_reduction,
                         **inputs)
-        loss = outputs.loss
+        loss = outputs.loss[0]*self.args.span_loss_coef+outputs.loss[0]*(1-self.args.span_loss_coef)
         return loss
     
     def create_optimizer(self):

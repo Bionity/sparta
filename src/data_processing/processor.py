@@ -57,7 +57,7 @@ class BaseProcessor(ABC):
                     end = curr_start
                 if curr_start==end or curr_start==(end+1):
                     self.recursive_search(curr_o+1, start, curr_start, output, token2start, depth+1, curr_spans)
-            curr_spans.append((start, end))
+        curr_spans.append((start, end))
         return curr_spans
 
     def construct_spans(self, tokenized_prompt, tokenized_output):
@@ -93,6 +93,16 @@ class BaseProcessor(ABC):
         if output is not None:
           output_spans = self.construct_spans(tokenized_prompt, tokenized_output)
           labels = self.construct_labels(output_spans)
+
+          to_decode = []
+          for label in labels:
+            if label != -100:
+              start = label//12
+              end = start+label%12
+              to_decode.extend(tokenized_prompt[start:end+1])
+          
+          print('Decoder labels: ', self.tokenizer.decode(to_decode))
+
           model_inputs['labels'] = torch.tensor(labels).unsqueeze(0)
 
         model_inputs['span_idx'] = torch.tensor(spans_idx, dtype=torch.int64).unsqueeze(0)
