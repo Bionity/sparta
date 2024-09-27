@@ -22,3 +22,7 @@ class DecoderConfig(Config, PretrainedConfig):
                                                 else "openai-community/gpt2")
             backbone_config = CONFIG_MAPPING[backbone_config["model_type"]](**backbone_config)
         self.backbone_config = backbone_config
+
+    @property
+    def hidden_size(self):
+      return self.backbone_config.hidden_size

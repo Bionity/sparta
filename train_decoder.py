@@ -41,10 +41,9 @@ def train(args):
 
     # Define tokenizer arguments
     tokenizer_args = {'max_length': 512, "truncation": True}
-    decoder_start_token_id = config.decoder_start_token_id
 
     # Preprocess the data using a processor
-    processor = TokenLevelDecoderProcessor(tokenizer, tokenizer_args, decoder_start_token_id, config.max_width)
+    processor = TokenLevelDecoderProcessor(tokenizer, tokenizer_args, config.max_width)
 
     # Prepare the datasets
     train_dataset = SpanGenDataset(train_data, processor)
@@ -105,9 +104,9 @@ if __name__ == "__main__":
 
     # Add arguments for the script
     parser.add_argument('--model_path', type=str, default="Qwen/Qwen2-0.5B", help="Path to the pre-trained model")
-    parser.add_argument('--train_data', type=str, default="data/rex.json", help="Path to the training dataset (in JSON format)")
+    parser.add_argument('--train_data', type=str, default="data/ner.json", help="Path to the training dataset (in JSON format)")
     parser.add_argument('--log_dir', type=str, default="models", help="Directory to save logs and model checkpoints")
-    parser.add_argument('--lr_encoder', type=float, default=5e-5, help="Learning rate for the encoder")
+    parser.add_argument('--lr_encoder', type=float, default=1e-5, help="Learning rate for the encoder")
     parser.add_argument('--lr_others', type=float, default=1e-4, help="Learning rate for other model components")
     parser.add_argument('--weight_decay_encoder', type=float, default=0.01, help="Weight decay for encoder parameters")
     parser.add_argument('--weight_decay_other', type=float, default=0.01, help="Weight decay for other model parameters")
@@ -122,7 +121,7 @@ if __name__ == "__main__":
     parser.add_argument('--max_width', type=int, default=12, help="Maximum width of span")
     parser.add_argument('--span_mode', type=str, default="markerV0", help="Span generation mode")
     parser.add_argument('--has_rnn', action='store_true', help="Whether the model has an RNN component")
-    parser.add_argument('--device', type=str, default="cpu", help="Device to run the model on (cuda or cpu)")
+    parser.add_argument('--device', type=str, default="cuda", help="Device to run the model on (cuda or cpu)")
 
     args = parser.parse_args()
     train(args)

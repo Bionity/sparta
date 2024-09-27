@@ -173,7 +173,7 @@ class TokenLevelDecoderProcessor(BaseProcessor):
 
     def process_example(self, prompt, output=None):
         tokenized_prompt = self.tokenize_input(prompt)
-        tokenized_output = self.tokenize_output(prompt)
+        tokenized_output = self.tokenize_input(prompt)
 
         spans_idx = [(i, i + j) for i in range(len(tokenized_prompt)) for j in range(self.max_width)]
 

@@ -96,7 +96,7 @@ class SpanDecoder(SpanDecoderPreTrainedModel):
         reduction: str = 'mean',
         **kwargs):
 
-        decoder_outputs = self.decoder(input_ids=input_ids, 
+        decoder_outputs = self.decoder.model(input_ids=input_ids, 
                                         attention_mask=attention_mask,
                                         **kwargs)
 
@@ -114,7 +114,7 @@ class SpanDecoder(SpanDecoderPreTrainedModel):
             span_embeddings = self.span_rep(hidden_states, span_idx)
         span_embeddings = span_embeddings.view(batch_size, -1, hidden_size)
 
-        lm_logits = self.model.lm_head(hidden_states)
+        lm_logits = self.decoder.lm_head(hidden_states)
 
         span_logits = torch.einsum('bld, bkd->blk', hidden_states, span_embeddings)
 
