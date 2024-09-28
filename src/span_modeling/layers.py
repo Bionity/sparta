@@ -267,7 +267,7 @@ class SpanMarker(nn.Module):
         cat = self.out_project(cat)
 
         # reshape
-        return cat.view(B, L, self.max_width, D)
+        return cat.view(B, -1, D)
 
 
 class SpanMarkerV0(nn.Module):
@@ -294,7 +294,7 @@ class SpanMarkerV0(nn.Module):
 
         cat = torch.cat([start_span_rep, end_span_rep], dim=-1).relu()
 
-        return self.out_project(cat).view(B, L, self.max_width, D)
+        return self.out_project(cat).view(B, -1, D)
 
 
 class ConvShareV2(nn.Module):

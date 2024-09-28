@@ -165,7 +165,7 @@ class TokenLevelDecoderProcessor(BaseProcessor):
         input_ids = tokenized_prompt+tokenized_output
 
         model_inputs = {"input_ids": torch.tensor(input_ids).unsqueeze(0)}
-        attention_mask = self.init_attention_mask(len(tokenized_prompt))
+        attention_mask = self.init_attention_mask(len(tokenized_prompt)+len(tokenized_output))
 
         model_inputs['attention_mask'] = attention_mask
         return model_inputs
