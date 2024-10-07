@@ -1,17 +1,18 @@
 
-from typing import Optional
+from typing import Optional, Union, List
 from dataclasses import dataclass
 import torch
 from torch import nn
 from transformers import PreTrainedModel, AutoConfig, AutoModelForCausalLM
-from transformers.models.auto import CONFIG_MAPPING
 from transformers.modeling_outputs import CausalLMOutputWithPast
+from transformers.cache_utils import Cache
 
 from ...span_modeling import LstmSeq2SeqEncoder, SpanRepLayer
 from .config import DecoderConfig
 
 @dataclass
 class CausalLMOutputWithPast(CausalLMOutputWithPast):
+    span_embeddings: Optional[torch.FloatTensor] = None
     span_logits: Optional[torch.FloatTensor] = None
 
 class SpanDecoderPreTrainedModel(PreTrainedModel):
@@ -84,20 +85,60 @@ class SpanDecoder(SpanDecoderPreTrainedModel):
         
         self.post_init()
 
+    def run_decoder(self, input_ids: Optional[torch.LongTensor] = None,
+                    attention_mask: Optional[torch.FloatTensor] = None,
+                    **kwargs):
+        
+        model_attr_names = ['model', 'decoder', 'transformer', 'generator']
+        
+        decoder_model = self._get_decoder_attribute(self.decoder, model_attr_names)
+        
+        if decoder_model is None:
+            raise AttributeError("Decoder model attribute not found. "
+                                 "Please specify a custom method for running the decoder.")
+        
+        decoder_outputs = decoder_model(input_ids=input_ids,
+                                        attention_mask=attention_mask,
+                                        **kwargs)
+        return decoder_outputs
+    
+    def run_lm_head(self, hidden_states: torch.FloatTensor):
+        lm_head_attr_names = ['lm_head', 'output_layer', 'head', 'classifier']
+
+        lm_head = self._get_decoder_attribute(self.decoder, lm_head_attr_names)
+        
+        if lm_head is None:
+            raise AttributeError("LM head attribute not found. "
+                                 "Please specify a custom method for running the language model head.")
+        
+        lm_logits = lm_head(hidden_states)
+        return lm_logits
+    
+    def _get_decoder_attribute(self, obj, attr_names):
+        for name in attr_names:
+            if hasattr(obj, name):
+                return getattr(obj, name)
+        return None
+
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
+        past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
+        span_embeddings: Optional[torch.FloatTensor] = None,
         span_idx: Optional[torch.LongTensor] = None,
         text_length: Optional[torch.LongTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         return_dict: Optional[bool] = None,
+        use_cache: Optional[bool] = None,
         label_smoothing: float =  0.0,
         reduction: str = 'mean',
         **kwargs):
 
-        decoder_outputs = self.decoder.model(input_ids=input_ids, 
+        decoder_outputs = self.run_decoder(input_ids=input_ids, 
                                         attention_mask=attention_mask,
+                                        past_key_values=past_key_values,
+                                        use_cache=use_cache,
                                         **kwargs)
 
         hidden_states = decoder_outputs[0]
@@ -107,12 +148,13 @@ class SpanDecoder(SpanDecoderPreTrainedModel):
         span_mask = (span_idx[:,:,-1]<text_length).unsqueeze(2)
         span_idx = span_mask*span_idx
 
-        if self.config.has_rnn:
-            post_rnn_hidden_states = self.rnn(hidden_states, attention_mask)
-            span_embeddings = self.span_rep(post_rnn_hidden_states, span_idx)
-        else:
-            span_embeddings = self.span_rep(hidden_states, span_idx)
-        span_embeddings = span_embeddings.view(batch_size, -1, hidden_size)
+        if span_embeddings is None:
+            if self.config.has_rnn:
+                post_rnn_hidden_states = self.rnn(hidden_states, attention_mask)
+                span_embeddings = self.span_rep(post_rnn_hidden_states, span_idx)
+            else:
+                span_embeddings = self.span_rep(hidden_states, span_idx)
+            span_embeddings = span_embeddings.view(batch_size, -1, hidden_size)
 
         lm_logits = self.decoder.lm_head(hidden_states)
 
@@ -142,6 +184,7 @@ class SpanDecoder(SpanDecoderPreTrainedModel):
         return CausalLMOutputWithPast(
             loss=loss,
             span_logits=span_logits,
+            span_embeddings=span_embeddings,
             logits=lm_logits,
             past_key_values=decoder_outputs.past_key_values,
             hidden_states=decoder_outputs.hidden_states,
