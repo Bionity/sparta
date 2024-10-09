@@ -163,7 +163,7 @@ class SpanDecoder(SpanDecoderPreTrainedModel):
 
             if self.spec_span is not None:
                 spec_span = self.spec_span.expand(batch_size, 1, hidden_size)
-                span_embeddings = torch.cat([spec_span, span_embeddings])
+                span_embeddings = torch.cat([spec_span, span_embeddings], dim=1)
 
         lm_logits = self.decoder.lm_head(hidden_states)
 
@@ -259,7 +259,8 @@ class SpanDecoder(SpanDecoderPreTrainedModel):
 
             if self.config.add_spec_token_span:
                 spec_token_idx = torch.where(next_span_ids==0)
-                curr_input_ids[spec_token_idx][-1] = next_token_ids[spec_token_idx]
+                if spec_token_idx[0].shape[0] != 0:
+                    curr_input_ids[spec_token_idx][-1] = next_token_ids[spec_token_idx]
 
             attention_mask = torch.cat([attention_mask, curr_attention_mask], dim=-1)
             if span_embeddings is None:

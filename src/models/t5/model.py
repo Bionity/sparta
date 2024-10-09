@@ -323,8 +323,8 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
 
             if self.spec_span is not None:
                 spec_span = self.spec_span.expand(batch_size, 1, hidden_size)
-                span_embeddings = torch.cat([spec_span, span_embeddings])
-                
+                span_embeddings = torch.cat([spec_span, span_embeddings], dim=1)
+
         if self.model_parallel:
             torch.cuda.set_device(self.decoder.first_device)
 
