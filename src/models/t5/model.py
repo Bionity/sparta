@@ -121,6 +121,11 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
 
         self.span_rep = SpanRepLayer(config.d_model, config.max_width, span_mode=config.span_mode)
 
+        if config.add_spec_token_span:
+            self.spec_span = nn.Parameter(torch.randn(1, 1, config.hidden_size))
+        else:
+            self.spec_span = None
+
         if self.config.has_rnn:
             self.rnn = LstmSeq2SeqEncoder(config)
 
@@ -191,6 +196,33 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
     def get_decoder(self):
         return self.decoder
 
+    def run_encoder(self,
+        input_ids: Optional[torch.LongTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        head_mask: Optional[torch.FloatTensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        **kwargs
+        ):
+        encoder_outputs = self.encoder(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                inputs_embeds=inputs_embeds,
+                head_mask=head_mask,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
+        if return_dict and not isinstance(encoder_outputs, BaseModelOutput):
+            encoder_outputs = BaseModelOutput(
+                last_hidden_state=encoder_outputs[0],
+                hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
+                attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
+            )
+        return encoder_outputs
+    
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
@@ -199,6 +231,7 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
         text_length: Optional[torch.LongTensor] = None,
         decoder_input_ids: Optional[torch.LongTensor] = None,
         decoder_attention_mask: Optional[torch.BoolTensor] = None,
+        span_embeddings: Optional[torch.FloatTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
         decoder_head_mask: Optional[torch.FloatTensor] = None,
         cross_attn_head_mask: Optional[torch.Tensor] = None,
@@ -280,13 +313,18 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
         span_mask = (span_idx[:,:,-1]<text_length).unsqueeze(2)
         span_idx = span_mask*span_idx
 
-        if self.config.has_rnn:
-            post_rnn_hidden_states = self.rnn(hidden_states, attention_mask)
-            span_embeddings = self.span_rep(post_rnn_hidden_states, span_idx)
-        else:
-            span_embeddings = self.span_rep(hidden_states, span_idx)
-        span_embeddings = span_embeddings.view(batch_size, -1, hidden_size)
+        if span_embeddings is None:
+            if self.config.has_rnn:
+                post_rnn_hidden_states = self.rnn(hidden_states, attention_mask)
+                span_embeddings = self.span_rep(post_rnn_hidden_states, span_idx)
+            else:
+                span_embeddings = self.span_rep(hidden_states, span_idx)
+            span_embeddings = span_embeddings.view(batch_size, -1, hidden_size)
 
+            if self.spec_span is not None:
+                spec_span = self.spec_span.expand(batch_size, 1, hidden_size)
+                span_embeddings = torch.cat([spec_span, span_embeddings])
+                
         if self.model_parallel:
             torch.cuda.set_device(self.decoder.first_device)
 

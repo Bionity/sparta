@@ -12,6 +12,7 @@ class Config(PretrainedConfig):
                  max_len: int = 384,
                  words_splitter_type: str = "whitespace",
                  has_rnn: bool = True,
+                 add_spec_token_span: bool = False,
                  **kwargs):
         super().__init__(**kwargs)
         self.name = name
@@ -22,3 +23,4 @@ class Config(PretrainedConfig):
         self.max_len = max_len
         self.words_splitter_type = words_splitter_type
         self.has_rnn = has_rnn
+        self.add_spec_token_span = add_spec_token_span

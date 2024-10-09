@@ -80,6 +80,11 @@ class SpanDecoder(SpanDecoderPreTrainedModel):
 
         self.span_rep = SpanRepLayer(config.hidden_size, config.max_width, span_mode=config.span_mode)
         
+        if config.add_spec_token_span:
+            self.spec_span = nn.Parameter(torch.randn(1, 1, config.hidden_size))
+        else:
+            self.spec_span = None
+
         self.model_parallel = False
         self.device_map = None
         
@@ -156,6 +161,10 @@ class SpanDecoder(SpanDecoderPreTrainedModel):
                 span_embeddings = self.span_rep(hidden_states, span_idx)
             span_embeddings = span_embeddings.view(batch_size, -1, hidden_size)
 
+            if self.spec_span is not None:
+                spec_span = self.spec_span.expand(batch_size, 1, hidden_size)
+                span_embeddings = torch.cat([spec_span, span_embeddings])
+
         lm_logits = self.decoder.lm_head(hidden_states)
 
         span_logits = torch.einsum('bld, bkd->blk', hidden_states, span_embeddings)
@@ -190,3 +199,75 @@ class SpanDecoder(SpanDecoderPreTrainedModel):
             hidden_states=decoder_outputs.hidden_states,
             attentions=decoder_outputs.attentions,
         )
+
+
+    def generate(self, model_inputs, max_length=512, max_new_tokens=None):
+        model_inputs = {key: value.to(self.device) for key, value in model_inputs.items()}
+
+        input_ids = model_inputs.pop('input_ids')
+
+        if max_new_tokens is not None:
+            new_tokens_count = max_new_tokens
+        else:
+            new_tokens_count = max(0, max_length - input_ids.shape[1])
+
+        batch_size = input_ids.shape[0]
+
+        token_count = 0
+
+        past_key_values = None
+        span_embeddings = None
+
+        span_idx = model_inputs.get('span_idx')
+
+        curr_input_ids = input_ids
+        attention_mask = model_inputs.pop('attention_mask')
+        generated_tokens = []
+        while token_count<new_tokens_count:
+            outputs = self.forward(input_ids = curr_input_ids,
+                                    attention_mask = attention_mask,
+                                    span_embeddings=span_embeddings,
+                                    past_key_values=past_key_values,
+                                    **model_inputs, use_cache=True, return_dict=True)
+
+            next_span_ids = outputs.span_logits.argmax(dim=-1)[:, -1]
+            
+            next_token_ids = outputs.logits.argmax(dim=-1)[:, -1]
+
+            batch_range = torch.arange(batch_size)
+
+            span_indices = span_idx[batch_range, next_span_ids]
+
+            span_lengths = (span_indices[:,1] - span_indices[:, 0])+1
+
+            max_span_length = span_lengths.max(-1).values
+            token_count += max_span_length.item()
+
+            curr_input_ids = torch.zeros((batch_size, max_span_length), dtype=span_idx.dtype, device=span_idx.device)
+            curr_attention_mask = torch.zeros((batch_size, max_span_length), dtype=span_idx.dtype, device=span_idx.device)
+
+            input_ids_range = torch.arange(input_ids.shape[1], device=input_ids.device).unsqueeze(0).expand(batch_size, input_ids.shape[1])
+            new_tokens_range = torch.arange(max_span_length, device=input_ids.device).unsqueeze(0).expand(batch_size, max_span_length)
+
+            batch_indices, new_token_idx = torch.where(new_tokens_range>=(max_span_length-span_lengths).unsqueeze(1))
+
+            new_tokens_mask = (input_ids_range >= span_indices[:, 0].unsqueeze(1)) & (input_ids_range <= span_indices[:, 1].unsqueeze(1))
+            batch_indices, input_token_idx = torch.where(new_tokens_mask)
+
+            curr_attention_mask[batch_indices, new_token_idx ] = 1
+            curr_input_ids[batch_indices, new_token_idx ] = input_ids[batch_indices, input_token_idx]
+
+            if self.config.add_spec_token_span:
+                spec_token_idx = torch.where(next_span_ids==0)
+                curr_input_ids[spec_token_idx][-1] = next_token_ids[spec_token_idx]
+
+            attention_mask = torch.cat([attention_mask, curr_attention_mask], dim=-1)
+            if span_embeddings is None:
+                span_embeddings = outputs.span_embeddings
+
+            past_key_values = outputs.past_key_values
+            generated_tokens.append(curr_input_ids)
+
+        output_ids = torch.cat(generated_tokens, dim=-1)
+
+        return output_ids

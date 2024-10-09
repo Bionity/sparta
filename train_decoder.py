@@ -16,6 +16,7 @@ def train(args):
                                     backbone_config=backbone_config,
                                     max_width=args.max_width, 
                                     dropout=args.dropout, span_mode=args.span_mode,
+                                    add_spec_token_span=args.add_spec_token_span,
                                     has_rnn=args.has_rnn)
 
     # Load the pre-trained model
@@ -121,6 +122,7 @@ if __name__ == "__main__":
     parser.add_argument('--max_width', type=int, default=12, help="Maximum width of span")
     parser.add_argument('--span_mode', type=str, default="markerV0", help="Span generation mode")
     parser.add_argument('--has_rnn', action='store_true', help="Whether the model has an RNN component")
+    parser.add_argument('--add_spec_token_span', action='store_true', help="Whether to add special token span when model can't find the right span.")
     parser.add_argument('--device', type=str, default="cuda", help="Device to run the model on (cuda or cpu)")
 
     args = parser.parse_args()

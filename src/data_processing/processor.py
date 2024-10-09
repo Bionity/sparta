@@ -4,10 +4,11 @@ import torch
 
 
 class BaseProcessor(ABC):
-    def __init__(self, tokenizer, tokenization_args={}, max_width=12):
+    def __init__(self, tokenizer, tokenization_args={}, max_width=12, spec_token_span=0):
         self.tokenizer = tokenizer
         self.tokenization_args = tokenization_args
         self.max_width = max_width
+        self.spec_token_span = spec_token_span
 
     @abstractmethod
     def tokenize_input(self, text):
@@ -88,6 +89,9 @@ class BaseProcessor(ABC):
         
         spans_idx = [(i, i + j) for i in range(len(tokenized_prompt)) for j in range(self.max_width)]
 
+        if self.spec_token_span:
+            spans_idx.insert(0, (0, 0))
+
         model_inputs = self.prepare_model_inputs(tokenized_prompt, tokenized_output)
 
         if output is not None:
@@ -129,9 +133,12 @@ class TokenLevelEncoderDecoderProcessor(BaseProcessor):
         labels = []
         for span in spans:
             if span[0]==-1 and span[1]==-1:
-                labels.append(-100)
+                if self.spec_token_span:
+                    labels.append(0)
+                else:
+                    labels.append(-100)
                 continue
-            span_id = span[0]*self.max_width+span[1]-span[0]
+            span_id = span[0]*self.max_width+span[1]-span[0]+self.spec_token_span
             labels.append(span_id)
             for i in range(span[1]-span[0]):
                 labels.append(-100)
@@ -162,9 +169,12 @@ class TokenLevelDecoderProcessor(BaseProcessor):
         labels = []
         for span in spans:
             if span[0]==-1 and span[1]==-1:
-                labels.append(-100)
+                if self.spec_token_span:
+                    labels.append(0)
+                else:
+                    labels.append(-100)
                 continue
-            span_id = span[0]*self.max_width+span[1]-span[0]
+            span_id = span[0]*self.max_width+span[1]-span[0]+self.spec_token_span
             labels.append(span_id)
             for i in range(span[1]-span[0]):
                 labels.append(-100)
@@ -184,11 +194,16 @@ class TokenLevelDecoderProcessor(BaseProcessor):
 
     def process_example(self, prompt, output=None):
         tokenized_prompt = self.tokenize_input(prompt)
+
         if output is not None:
           tokenized_output = self.tokenize_input(output)
         else:
           tokenized_output = None
+        
         spans_idx = [(i, i + j) for i in range(len(tokenized_prompt)) for j in range(self.max_width)]
+
+        if self.spec_token_span:
+            spans_idx.insert(0, (-1, -1))
 
         model_inputs = self.prepare_model_inputs(tokenized_prompt, tokenized_output)
 
