@@ -98,15 +98,13 @@ class BaseProcessor(ABC):
           output_spans = self.construct_spans(tokenized_prompt, tokenized_output)
           labels = self.construct_labels(output_spans)
 
-          to_decode = []
-          for label in labels:
-            if label != -100:
-              start = label//12
-              end = start+label%12
-              to_decode.extend(tokenized_prompt[start:end+1])
+        #   to_decode = []
+        #   for label in labels:
+        #     if label != -100:
+        #       start = label//12
+        #       end = start+label%12
+        #       to_decode.extend(tokenized_prompt[start:end+1])
           
-        #   print('Decoder labels: ', self.tokenizer.decode(to_decode))
-
           model_inputs['labels'] = torch.tensor(labels).unsqueeze(0)
 
         model_inputs['span_idx'] = torch.tensor(spans_idx, dtype=torch.int64).unsqueeze(0)
@@ -197,6 +195,7 @@ class TokenLevelDecoderProcessor(BaseProcessor):
 
         if output is not None:
           tokenized_output = self.tokenize_input(output)
+          tokenized_output.append(self.tokenizer.eos_token_id)
         else:
           tokenized_output = None
         

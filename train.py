@@ -12,8 +12,9 @@ from src.models import T5Config, T5ForConditionalGeneration
 def train(args):
     # Load the model configuration
     config = T5Config.from_pretrained(args.model_path, max_width=args.max_width, 
-                                      dropout=args.dropout, span_mode=args.span_mode,
-                                      has_rnn=args.has_rnn)
+                                        dropout=args.dropout, span_mode=args.span_mode,
+                                        add_spec_token_span=args.add_spec_token_span,
+                                        has_rnn=args.has_rnn)
 
     # Load the pre-trained model
     model = T5ForConditionalGeneration.from_pretrained(args.model_path, config=config).to(args.device)
@@ -57,6 +58,7 @@ def train(args):
         weight_decay=float(args.weight_decay_encoder),
         others_lr=float(args.lr_others),
         others_weight_decay=float(args.weight_decay_other),
+        span_loss_coef=float(args.span_loss_coef),
         lr_scheduler_type=args.scheduler_type,
         warmup_ratio=args.warmup_ratio,
         per_device_train_batch_size=args.train_batch_size,
@@ -119,6 +121,8 @@ if __name__ == "__main__":
     parser.add_argument('--max_width', type=int, default=12, help="Maximum width of span")
     parser.add_argument('--span_mode', type=str, default="markerV0", help="Span generation mode")
     parser.add_argument('--has_rnn', action='store_true', help="Whether the model has an RNN component")
+    parser.add_argument('--span_loss_coef', type=float, default=0.5, help="Coefficient for span cross entropy loss.")
+    parser.add_argument('--add_spec_token_span', action='store_true', help="Whether to add special token span when model can't find the right span.")
     parser.add_argument('--device', type=str, default="cpu", help="Device to run the model on (cuda or cpu)")
 
     args = parser.parse_args()

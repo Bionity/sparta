@@ -187,9 +187,9 @@ class SpanDecoder(SpanDecoderPreTrainedModel):
         span_loss = None
         token_loss = None
         if labels is not None:
-            loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
-                                        # label_smoothing = label_smoothing,
-                                        # reduction = reduction)
+            loss_fct = nn.CrossEntropyLoss(ignore_index=-100,
+                                        label_smoothing = label_smoothing,
+                                        reduction = reduction)
             
             labels = labels.to(span_logits.device)
             span_loss = loss_fct(span_logits.view(-1, span_logits.size(-1)), labels.view(-1))
@@ -198,7 +198,7 @@ class SpanDecoder(SpanDecoderPreTrainedModel):
             token_labels = input_ids[:,1:].contiguous()
             token_loss = loss_fct(shifted_logits.view(-1, shifted_logits.size(-1)), token_labels.view(-1))
 
-        loss = token_loss#(span_loss, token_loss)
+        loss = (span_loss, token_loss)
 
 
         if not return_dict:
