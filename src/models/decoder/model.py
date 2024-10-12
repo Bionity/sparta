@@ -17,7 +17,7 @@ class CausalLMOutputWithPast(CausalLMOutputWithPast):
 
 class SpanDecoderPreTrainedModel(PreTrainedModel):
     config_class = DecoderConfig
-    base_model_prefix = "model"
+    base_model_prefix = "decoder"
     supports_gradient_checkpointing = False
 
     def _init_weights(self, module):
@@ -118,12 +118,27 @@ class SpanDecoder(SpanDecoderPreTrainedModel):
         
         lm_logits = lm_head(hidden_states)
         return lm_logits
-    
+  
     def _get_decoder_attribute(self, obj, attr_names):
         for name in attr_names:
             if hasattr(obj, name):
                 return getattr(obj, name)
         return None
+
+    def get_input_embeddings(self):
+        return self.decoder.get_input_embeddings()
+
+    def set_input_embeddings(self, value):
+        return self.decoder.set_input_embeddings(value)
+
+    def get_output_embeddings(self):
+        return self.decoder.get_output_embeddings()
+
+    def set_output_embeddings(self, new_embeddings):
+        self.decoder.set_output_embeddings(new_embeddings)
+
+    def set_decoder(self, decoder):
+        self.decoder = decoder
 
     def forward(
         self,
@@ -172,18 +187,18 @@ class SpanDecoder(SpanDecoderPreTrainedModel):
         span_loss = None
         token_loss = None
         if labels is not None:
-            loss_fct = nn.CrossEntropyLoss(ignore_index=-100, 
-                                        label_smoothing = label_smoothing,
-                                        reduction = reduction)
+            loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
+                                        # label_smoothing = label_smoothing,
+                                        # reduction = reduction)
             
             labels = labels.to(span_logits.device)
             span_loss = loss_fct(span_logits.view(-1, span_logits.size(-1)), labels.view(-1))
             
-            lm_logits = lm_logits[:, :-1,:].contiguous()
+            shifted_logits = lm_logits[:, :-1,:].contiguous()
             token_labels = input_ids[:,1:].contiguous()
-            token_loss = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), token_labels.view(-1))
+            token_loss = loss_fct(shifted_logits.view(-1, shifted_logits.size(-1)), token_labels.view(-1))
 
-        loss = (span_loss, token_loss)
+        loss = token_loss#(span_loss, token_loss)
 
 
         if not return_dict:
