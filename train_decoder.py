@@ -104,7 +104,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     # Add arguments for the script
-    parser.add_argument('--model_path', type=str, default="Qwen/Qwen2-0.5B", help="Path to the pre-trained model")
+    parser.add_argument('--model_path', type=str, default="openai-community/gpt2", help="Path to the pre-trained model")
     parser.add_argument('--train_data', type=str, default="data/ner.json", help="Path to the training dataset (in JSON format)")
     parser.add_argument('--log_dir', type=str, default="models", help="Directory to save logs and model checkpoints")
     parser.add_argument('--lr_encoder', type=float, default=1e-5, help="Learning rate for the encoder")
@@ -114,9 +114,9 @@ if __name__ == "__main__":
     parser.add_argument('--scheduler_type', type=str, default="linear", help="Type of learning rate scheduler")
     parser.add_argument('--warmup_ratio', type=float, default=0.1, help="Warmup ratio for the scheduler")
     parser.add_argument('--train_batch_size', type=int, default=2, help="Training batch size")
-    parser.add_argument('--num_steps', type=int, default=1000, help="Number of training steps")
+    parser.add_argument('--num_steps', type=int, default=10000, help="Number of training steps")
     parser.add_argument('--max_grad_norm', type=float, default=1.0, help="Maximum gradient norm for clipping")
-    parser.add_argument('--eval_every', type=int, default=500, help="Evaluation and checkpoint saving frequency")
+    parser.add_argument('--eval_every', type=int, default=1000, help="Evaluation and checkpoint saving frequency")
     parser.add_argument('--save_total_limit', type=int, default=3, help="Limit the total number of checkpoints saved")
     parser.add_argument('--dropout', type=float, default=0.1, help="Dropout rate for the model")
     parser.add_argument('--max_width', type=int, default=12, help="Maximum width of span")

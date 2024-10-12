@@ -105,7 +105,7 @@ class BaseProcessor(ABC):
               end = start+label%12
               to_decode.extend(tokenized_prompt[start:end+1])
           
-          print('Decoder labels: ', self.tokenizer.decode(to_decode))
+        #   print('Decoder labels: ', self.tokenizer.decode(to_decode))
 
           model_inputs['labels'] = torch.tensor(labels).unsqueeze(0)
 

@@ -52,10 +52,14 @@ class DataCollatorWithPadding:
         for key in keys:
             # Collect data for the current key
             key_data = [item[key].squeeze(0) for item in batch]
-
+            
+            if key == 'labels':
+                padding_value = -100
+            else:
+                padding_value = 0
             if isinstance(key_data[0], torch.Tensor):
                 if key_data[0].dim() == 1:
-                    padded_batch[key] = pad_sequence(key_data, batch_first=True)
+                    padded_batch[key] = pad_sequence(key_data, batch_first=True, padding_value = padding_value)
                 elif key_data[0].dim() == 2: # span_idx case
                     padded_batch[key] = pad_2d_tensor(key_data)
                 else:
