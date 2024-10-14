@@ -387,9 +387,9 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
             labels = labels.to(span_logits.device)
             span_loss = loss_fct(span_logits.view(-1, span_logits.size(-1)), labels.view(-1))
             
-            lm_logits = lm_logits[:, :-1,:].contiguous()
+            shifted_logits = lm_logits[:, :-1,:].contiguous()
             token_labels = decoder_input_ids[:,1:].contiguous()
-            token_loss = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), token_labels.view(-1))
+            token_loss = loss_fct(shifted_logits.view(-1, shifted_logits.size(-1)), token_labels.view(-1))
 
         loss = (span_loss, token_loss)
         if not return_dict:
@@ -545,7 +545,7 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
             if self.config.add_spec_token_span:
                 spec_token_idx = torch.where(next_span_ids==0)
                 if spec_token_idx[0].shape[0] != 0:
-                curr_input_ids[spec_token_idx][-1] = next_token_ids[spec_token_idx]
+                    curr_input_ids[spec_token_idx][-1] = next_token_ids[spec_token_idx]
 
             decoder_attention_mask = torch.cat([decoder_attention_mask, curr_attention_mask], dim=-1)
             if span_embeddings is None:
