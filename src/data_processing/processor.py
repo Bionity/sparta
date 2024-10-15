@@ -126,7 +126,7 @@ class TokenLevelEncoderDecoderProcessor(BaseProcessor):
         if output is not None:
           tokenized_output = self.tokenize_output(output)
         else:
-          tokenized_output = None
+          tokenized_output = [self.decoder_start_token_id]
         return tokenized_prompt,tokenized_output 
     
     def construct_labels(self, spans):

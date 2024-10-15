@@ -94,7 +94,7 @@ class Trainer(transformers.Trainer):
                         reduction = self.args.loss_reduction,
                         return_dict=True,
                         **inputs)
-        loss = outputs.loss[0]*self.args.span_loss_coef+outputs.loss[0]*(1-self.args.span_loss_coef)
+        loss = outputs.loss[0]*self.args.span_loss_coef+outputs.loss[1]*(1-self.args.span_loss_coef)
         return loss
     
     def create_optimizer(self):
