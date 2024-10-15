@@ -385,7 +385,9 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
                                         reduction = reduction)
             # move labels to correct device to enable PP
             labels = labels.to(span_logits.device)
-            span_loss = loss_fct(span_logits.view(-1, span_logits.size(-1)), labels.view(-1))
+            span_logits_shifted = span_logits[:, :-1,:].contiguous()
+            labels_shifted = labels[:, 1:].contiguous()
+            span_loss = loss_fct(span_logits_shifted.view(-1, span_logits_shifted.size(-1)), labels_shifted.view(-1))
             
             shifted_logits = lm_logits[:, :-1,:].contiguous()
             token_labels = decoder_input_ids[:,1:].contiguous()
