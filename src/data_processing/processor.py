@@ -14,9 +14,20 @@ class BaseProcessor(ABC):
     def tokenize_input(self, text):
         pass
     
-    @abstractmethod
-    def construct_labels(self, tokenized_output, spans):
-        pass
+    def construct_labels(self, spans):
+        labels = []
+        for span in spans:
+            if span[0]==-1 and span[1]==-1:
+                if self.spec_token_span:
+                    labels.append(0)
+                else:
+                    labels.append(-100)
+                continue
+            span_id = (span[0]*self.max_width+span[1]-span[0])+self.spec_token_span
+            labels.append(span_id)
+            for i in range(span[1]-span[0]):
+                labels.append(-100)
+        return labels
 
     @abstractmethod
     def prepare_model_inputs(self, tokenized_prompt, tokenized_output, spans):
@@ -81,9 +92,6 @@ class BaseProcessor(ABC):
         
         spans_idx = [(i, i + j) for i in range(len(tokenized_prompt)) for j in range(self.max_width)]
 
-        if self.spec_token_span:
-            spans_idx.insert(0, (0, 0))
-
         model_inputs = self.prepare_model_inputs(tokenized_prompt, tokenized_output)
 
         if output is not None:
@@ -129,21 +137,6 @@ class TokenLevelEncoderDecoderProcessor(BaseProcessor):
           tokenized_output = [self.decoder_start_token_id]
         return tokenized_prompt,tokenized_output 
     
-    def construct_labels(self, spans):
-        labels = []
-        for span in spans:
-            if span[0]==-1 and span[1]==-1:
-                if self.spec_token_span:
-                    labels.append(0)
-                else:
-                    labels.append(-100)
-                continue
-            span_id = (span[0]*self.max_width+span[1]-span[0])+self.spec_token_span
-            labels.append(span_id)
-            for i in range(span[1]-span[0]):
-                labels.append(-100)
-        return labels
-
     def prepare_model_inputs(self, tokenized_prompt, tokenized_output):
 
         model_inputs = {"input_ids": torch.tensor(tokenized_prompt).unsqueeze(0),
@@ -161,21 +154,6 @@ class TokenLevelDecoderProcessor(BaseProcessor):
     def tokenize_input(self, text):
         tokens = self.tokenizer.encode(text, **self.tokenization_args)
         return tokens
-    
-    def construct_labels(self, spans):
-        labels = []
-        for span in spans:
-            if span[0]==-1 and span[1]==-1:
-                if self.spec_token_span:
-                    labels.append(0)
-                else:
-                    labels.append(-100)
-                continue
-            span_id = span[0]*self.max_width+span[1]-span[0]+self.spec_token_span
-            labels.append(span_id)
-            for i in range(span[1]-span[0]):
-                labels.append(-100)
-        return labels
 
     def prepare_model_inputs(self, tokenized_prompt, tokenized_output=None):
         if tokenized_output is not None:
@@ -199,9 +177,6 @@ class TokenLevelDecoderProcessor(BaseProcessor):
         
         spans_idx = [(i, i + j) for i in range(len(tokenized_prompt)) for j in range(self.max_width)]
 
-        if self.spec_token_span:
-            spans_idx.insert(0, (-1, -1))
-
         model_inputs = self.prepare_model_inputs(tokenized_prompt, tokenized_output)
 
         if output is not None:
@@ -215,7 +190,8 @@ class TokenLevelDecoderProcessor(BaseProcessor):
               start = label//12
               end = start+label%12
               to_decode.extend(tokenized_prompt[start:end+1])
-        #   print('Decoded: ', self.tokenizer.decode(to_decode))
+          print('Decoded: ', self.tokenizer.decode(to_decode))
+              
           blank_labels = [-100 for i in range(len(tokenized_prompt))]
           labels = blank_labels+labels
           model_inputs['labels'] = torch.tensor(labels).unsqueeze(0)
